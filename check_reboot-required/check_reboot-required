@@ -35,7 +35,7 @@
 # check_reboot-required
 # Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu to check
 # if a reboot are required and also list packages that requires reboot
-# Web: https://github.com/jryberg/check_apt_updated
+# Web: https://github.com/jryberg/nagios-plugins/
 
 APPNAME=`basename $0`
 VERSION="1.0"
