@@ -35,23 +35,31 @@
 # Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu to check
 # when APT was able to update the software database last time
 # Web: https://github.com/jryberg/nagios-plugins
-
+#
+# Changelog
+# 1.0 (2014-05-19)
+#   Initial version
+#
+# 1.1 (2014-05-21)
+#   Enhancement: Refactor of variable declarations
+#   Bug: Arg parser loops infinitly if value for valid arguments are missing
+#
 APPNAME=`basename $0`
-VERSION="1.0"
+VERSION="1.1"
 
 # Defining standard messages and exit error levels
 # https://nagios-plugins.org/doc/guidelines.html
-OK_EXIT=0
-WARNING_EXIT=1
-CRITICAL_EXIT=2
-UNKNOWN_EXIT=3
+OK_EXIT_CODE=0
+WARNING_EXIT_CODE=1
+CRITICAL_EXIT_CODE=2
+UNKNOWN_EXIT_CODE=3
 OK_MSG="OK"
 WARNING_MSG="Warning"
 CRITICAL_MSG="Critical"
 UNKNOWN_MSG="Unknown"
 
 # Using Unknown as default
-EXIT_CODE=$UNKNOWN_EXIT
+EXIT_CODE=$UNKNOWN_EXIT_CODE
 EXIT_MSG=$UNKNOWN_MSG
 
 # Setting default warning to 2 days and critical to 4 days
@@ -64,8 +72,8 @@ STAMP_PATH="/var/lib/apt/periodic/update-success-stamp"
 # Function to explain how to use the program
 function_usage () {
 cat - <<EOF
-Usage: ${appname} [--help]
-Usage: ${appname} [-w warn] [-c crit]
+Usage: ${APPNAME} [--help]
+Usage: ${APPNAME} [-w warn] [-c crit]
 
 This check command checks number of seconds since Debian/Ubuntu APT database
 was successfully updated
@@ -86,76 +94,78 @@ EOF
 }
 
 # Process arguments
-while [ $# -gt 0 ]
+while [ ${#} -gt 0 ]
     do
-        OPT="$1"
-            case "$OPT" in
+        OPT="${1}"
+            case "${OPT}" in
                 --help)
                     function_usage
-                    exit $OK_EXIT
+                    exit $OK_EXIT_CODE
                 ;;
                 -w)
-                    WARNING_LEVEL="${2}"
-                    shift 2
+                    shift
+                    WARNING_LEVEL="${1}"
+                    shift 
                 ;;
                 -c)
-                    CRITICAL_LEVEL="${2}"
-                    shift 2
+                    shift
+                    CRITICAL_LEVEL="${1}"
+                    shift 
                 ;;
                 --version|-V)
                     echo "${APPNAME} ${VERSION}"
-                    exit $OK_EXIT
+                    exit $OK_EXIT_CODE
                 ;;
                 *)
                     echo "${APPNAME}: invalid option '${1}'"
                     echo "Try '${APPNAME} --help' for more information."
-                    exit $UNKNOWN_EXIT
+                    exit $UNKNOWN_EXIT_CODE
                 ;;
     esac
 done
 
 # Checking if update-success-stam exist, if not exit with Unknown
-if [ ! -f "$STAMP_PATH" ]; then
-        echo "$UNKNOWN_MSG: update-success-stamp was not found. Is this Debian/Ubuntu?"
-        exit $UNKNOWN_EXIT
+if [ ! -f "${STAMP_PATH}" ]; then
+        echo "${UNKNOWN_MSG}: update-success-stamp was not found. Is this Debian/Ubuntu?"
+        exit $UNKNOWN_EXIT_CODE
 fi
 
 # Get latest time in Unix format since the file was modified last time
-LAST_SUCCESS=`stat -c %Y $STAMP_PATH`
+LAST_SUCCESS=`stat -c %Y ${STAMP_PATH}`
 
 # Get current time in Unix format
 NOW=`date +%s`
 
 # If last success are bigger than now, the time must be wrong
-if [ $LAST_SUCCESS -gt $NOW ]; then
-    echo "$UNKNOWN_MSG: Last access was in the future, should not be possible. Please correct server time"
-    exit $UNKNOWN_EXIT
+if [ ${LAST_SUCCESS} -gt ${NOW} ]; then
+    echo "${UNKNOWN_MSG}: Last access was in the future, should not be possible. Please correct server time"
+    exit $UNKNOWN_EXIT_CODE
 fi
 
 # Make sure warning and critical levels are integers
-if [[ ! $WARNING_LEVEL =~ ^[0-9]+$ ]] || [[ ! $CRITICAL_LEVEL =~ ^[0-9]+$ ]]; then
+if [[ ! ${WARNING_LEVEL} =~ ^[0-9]+$ ]] || [[ ! ${CRITICAL_LEVEL} =~ ^[0-9]+$ ]]; then
     echo "${APPNAME}: Warning and Critical level must be positive integer"
-    exit $UNKNOWN_EXIT
+    exit $UNKNOWN_EXIT_CODE
     
 fi
 
 # How many seconds was it since last success?
-SECONDS_SINCE_LAST_UPDATE=$(($NOW-$LAST_SUCCESS))
+SECONDS_SINCE_LAST_UPDATE=$((${NOW}-${LAST_SUCCESS}))
 
 # If critical level are greater than seconds since last success we should exit with Critical exit code
-if [ $SECONDS_SINCE_LAST_UPDATE -gt $CRITICAL_LEVEL ]; then
-    EXIT_CODE=$CRITICAL_EXIT
+if [ ${SECONDS_SINCE_LAST_UPDATE} -gt ${CRITICAL_LEVEL} ]; then
+    EXIT_CODE=$CRITICAL_EXIT_CODE
     EXIT_MSG=$CRITICAL_MSG
 # If warning level are greater than seconds since last success we should exit with Warning exit code
-elif [ $SECONDS_SINCE_LAST_UPDATE -gt $WARNING_LEVEL ]; then
-    EXIT_CODE=$WARNING_EXIT
+elif [ ${SECONDS_SINCE_LAST_UPDATE} -gt ${WARNING_LEVEL} ]; then
+    EXIT_CODE=$WARNING_EXIT_CODE
     EXIT_MSG=$WARNING_MSG
 # If both critical and warning level are less than seconds since last success we shoud exit with OK exit code
 else
-    EXIT_CODE=$OK_EXIT
+    EXIT_CODE=$OK_EXIT_CODE
     EXIT_MSG=$OK_MSG
 fi
 
 # Echo message and exit
-echo "$EXIT_MSG: Updated "$SECONDS_SINCE_LAST_UPDATE" seconds ago|'Last updated'=${SECONDS_SINCE_LAST_UPDATE}s;${WARNING_LEVEL};${CRITICAL_LEVEL};0"
+echo "${EXIT_MSG}: Updated "${SECONDS_SINCE_LAST_UPDATE}" seconds ago|'Last updated'=${SECONDS_SINCE_LAST_UPDATE}s;${WARNING_LEVEL};${CRITICAL_LEVEL};0"
 exit $EXIT_CODE
