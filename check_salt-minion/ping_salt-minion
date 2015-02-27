@@ -1,0 +1,170 @@
+#!/bin/bash
+#
+# License: The BSD 3-Clause License
+#
+# Copyright (c) 2015, Johan Ryberg
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+# 
+# * Redistributions of source code must retain the above copyright notice, 
+#  this list of conditions and the following disclaimer.
+# 
+# * Redistributions in binary form must reproduce the above copyright notice,
+#  this list of conditions and the following disclaimer in the documentation
+#  and/or other materials provided with the distribution.
+# 
+# * Neither the name of the copyright holder nor the names of its contributors
+#  may be used to endorse or promote products derived from this software without
+#  specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+#  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+#  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+#  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+#  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+#  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+#
+# ping_salt-minion 
+# This program pings all salt-minions using test.ping and saves the state
+# for check_salt-minion Naemon / Nagios / op5 plugin
+#
+# Web: https://github.com/jryberg/nagios-plugins
+#
+# Changelog
+# 1.0 (2015-01-29)
+#   Initial version
+#
+# 1.1 (2015-02-27)
+#   Use mktemp instead of tempfile since Redhat does not have tempfile
+#
+# Variable declaration
+
+# Set VERBOSE to 1 if you would like some output
+VERBOSE="1"
+
+# Absolute path to binaries
+# Since this script will most likley run as root, we want to have
+#  full control of each binery that we execute
+# This may have to be changed to match the system
+
+SALTKEY="/usr/bin/salt-key"
+SALT="/usr/bin/salt"
+SED="/bin/sed"
+CAT="/bin/cat"
+WC="/usr/bin/wc"
+PRINTF="/usr/bin/printf"
+MV="/bin/mv"
+RM="/bin/rm"
+ECHO="/bin/echo"
+MKDIR="/bin/mkdir"
+MKTEMP="/bin/mktemp"
+DATE="/bin/date"
+CHOWN="/bin/chmod"
+
+# Do not edit below this comment
+VERSION="1.0"
+TMP_MINION_LIST=$(${MKTEMP})
+TMP_DEAD_MINION_LIST=$(${MKTEMP})
+CACHE_FOLDER="/var/cache/check_salt-minion/"
+DEAD_MINIONS="${CACHE_FOLDER}dead-salt-minion.txt"
+NR_OF_MINIONS="0"
+TMPLIST=""
+
+# Create cache folder if it does not exist
+if ! [ -f "${CACHE_FOLDER}" ]; then
+  ${MKDIR} -p "${CACHE_FOLDER}"
+fi
+
+# Ask salt-key for a list of all accepted salt-minions
+#  and save the result in a text file
+${SALTKEY} --list=accepted --no-color --output-file=${TMP_MINION_LIST} 
+
+# Remove the first line (header)
+${SED} -i '1d' ${TMP_MINION_LIST} 
+
+# Count number of salt-minions and save the value on the first row
+${CAT} ${TMP_MINION_LIST} | ${WC} -l >> ${TMP_DEAD_MINION_LIST}
+
+# Should we be verbose?
+if [ "${VERBOSE}" = "1" ]; then
+  ${PRINTF} "Ping salt-minion service on:\n"
+fi
+
+# Read each line in the list of accepted salt-minions
+while read -r line
+do
+  # Should we be verbose?
+  if [ "${VERBOSE}" = "1" ]; then
+    ${PRINTF} " - ${line}: "
+  fi
+
+  # Ask salt to test.ping current salt-minion
+  OUTPUT=$(${SALT} --no-color --timeout=20 --output=newline_values_only ''$line'' test.ping)
+
+  # We will only get a result if test.ping was successful
+  if  [ -n "${OUTPUT}" ]; then
+    # If there was a old state file for current minion, remove it
+    #  since the salt-minion is alive again
+    if [ -f "${CACHE_FOLDER}${line}.state" ]; then
+      ${PRINTF} "was dead but is now "
+      ${RM} -f "${CACHE_FOLDER}${line}.state"
+    fi
+
+    # Should we be verbose?
+    if [ "${VERBOSE}" = "1" ]; then
+      ${PRINTF} "alive\n" 
+    fi
+ 
+  # If the result was "null", something is dead
+  else
+ 
+    # Create a state file with current epoch time
+    if ! [ -f "${CACHE_FOLDER}${line}.state" ]; then
+      ${DATE} +%s  > "${CACHE_FOLDER}${line}.state"
+      ${PRINTF} "is now "
+    fi
+  
+    # Create a list with dead salt-minions
+    if [ -z "${TMPLIST}" ]; then
+      TMPLIST="${line}"
+    else
+      TMPLIST=$(${PRINTF} "${TMPLIST}\n${line}")
+    fi
+ 
+    # Increase number of minions with +1
+    ((NR_OF_MINIONS++))
+    
+    # Should we be verbose? 
+    if [ "${VERBOSE}" = "1" ]; then
+      ${PRINTF} "dead!\n"
+    fi
+  fi
+done < ${TMP_MINION_LIST}
+
+# Save number of dead salt-minions on the second line
+${ECHO} "${NR_OF_MINIONS}" >> ${TMP_DEAD_MINION_LIST}
+
+# Save the list of dead salt-minions on 3 and bellow
+${ECHO} "${TMPLIST}" >> ${TMP_DEAD_MINION_LIST}
+
+# Move the temp file to the real one in the cache folder
+#  and make sure everyone can read the result
+${MV} -f ${TMP_DEAD_MINION_LIST} ${DEAD_MINIONS}
+${CHOWN} 644 ${DEAD_MINIONS}
+
+# Remove the temporary list of accepted salt-minions
+if [ -f ${TMP_MINION_LIST} ]; then
+  ${RM} -rf ${TMP_MINION_LIST}
+fi
+
+# Remove the temporary list of dead salt-minions
+if [ -f ${TMP_DEAD_MINION_LIST} ]; then
+  ${RM} -rf ${TMP_DEAD_MINION_LIST}
+fi

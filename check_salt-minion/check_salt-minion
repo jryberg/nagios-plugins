@@ -1,0 +1,239 @@
+#!/bin/bash
+#set -x
+#
+# License: The BSD 3-Clause License
+#
+# Copyright (c) 2015, Johan Ryberg
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+# 
+# 1. Redistributions of source code must retain the above copyright notice, 
+#  this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#  this list of conditions and the following disclaimer in the documentation
+#  and/or other materials provided with the distribution.
+# 
+# 3. Neither the name of the copyright holder nor the names of its contributors
+#  may be used to endorse or promote products derived from this software without
+#  specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+#  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+#  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+#  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+#  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+#  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+#
+# check_salt-minion
+# Plugin for NRPE (Nagios Remote Plugin Executor) to check
+# status of salt-minion daemons. Returns number of accepted salt-minions,
+# number of dead salt-minions and a list of dead salt-minion id's
+#
+# Web: https://github.com/jryberg/nagios-plugins/
+
+APPNAME=`basename $0`
+VERSION="1.0"
+
+# Defining standard messages and exit error levels
+# https://nagios-plugins.org/doc/guidelines.html
+OK_EXIT_CODE=0
+WARNING_EXIT_CODE=1
+CRITICAL_EXIT_CODE=2
+UNKNOWN_EXIT_CODE=3
+OK_MSG="OK"
+WARNING_MSG="Warning"
+CRITICAL_MSG="Critical"
+UNKNOWN_MSG="Unknown"
+
+# Using Unknown as default
+EXIT_CODE=$UNKNOWN_EXIT_CODE
+EXIT_MSG=$UNKNOWN_MSG
+
+# Setting default warning to 2 hours and critical to 4 hours (in seconds)
+WARNING_LEVEL=7200
+CRITICAL_LEVEL=14400
+
+# Path to the cache folder, dead salt-minion file and the exclude file of dead salt-minions
+CACHE_FOLDER="/var/cache/check_salt-minion/"
+DEAD_MINIONS="${CACHE_FOLDER}dead-salt-minion.txt"
+EXCLUDED_MINIONS_FILE="${CACHE_FOLDER}exclude-salt-minion.txt"
+
+# Function to explain how to use the program
+function_usage () {
+cat - <<EOF
+Usage: ${APPNAME} [--help]
+Usage: ${APPNAME} [-w warn] [-c crit]
+
+Plugin for NRPE (Nagios Remote Plugin Executor) to check
+status of salt-minion daemons. Returns number of accepted salt-minions,
+number of dead salt-minions and a list of dead salt-minion id's
+
+ --help
+    Show this help
+ -V, --version
+    Show version
+ -w
+    Warning level in seconds since first dead salt-minion was discovered
+ -c
+    Critical level in seconds since first dead salt-minion was discovered
+
+Example:
+${APPNAME} -w 7200 -c 14400
+
+EOF
+}
+
+# Process arguments
+while [ ${#} -gt 0 ]
+  do
+    OPT="${1}"
+    case "${OPT}" in
+      --help)
+        function_usage
+        exit $OK_EXIT_CODE
+      ;;
+      -w)
+        shift
+        WARNING_LEVEL="${1}"
+        shift 
+      ;;
+      -c)
+        shift
+        CRITICAL_LEVEL="${1}"
+        shift 
+      ;;
+      --version|-V)
+        echo "${APPNAME} ${VERSION}"
+        exit $OK_EXIT_CODE
+      ;;
+      *)
+        echo "${APPNAME}: invalid option '${1}'"
+        echo "Try '${APPNAME} --help' for more information."
+        exit $UNKNOWN_EXIT_CODE
+      ;;
+    esac
+done
+
+# Checking if dead-salt-minion exist, if not exit with Unknown
+if [ ! -f "${DEAD_MINIONS}" ]; then
+  echo "${UNKNOWN_MSG}: ${DEAD_MINIONS} was not found."
+  exit $UNKNOWN_EXIT_CODE
+fi
+
+# Make sure warning and critical levels are integers
+if [[ ! ${WARNING_LEVEL} =~ ^[0-9]+$ ]] || [[ ! ${CRITICAL_LEVEL} =~ ^[0-9]+$ ]]; then
+  echo "${APPNAME}: Warning and Critical level must be positive integer"
+  exit $UNKNOWN_EXIT_CODE
+fi
+
+# Parse list of dead-salt-minion from ping_salt-minion
+LINE_COUNT="0"
+TOP_DEAD_TIME="0"
+NOW=`date +%s`
+
+# Load EXCLUDED_MINIONS with the list of excluded salt-minion
+#  if it exists. This is a nice feature to hide already
+#  known salt-minions that are dead
+if [ -f "${EXCLUDED_MINIONS_FILE}" ]; then
+  EXCLUDED_MINIONS="$(<${EXCLUDED_MINIONS_FILE})"
+fi
+
+# Read each line of the result from ping_salt-minion
+while read -r line
+do
+  # Keep track on current row
+  ((LINE_COUNT++))
+
+  # Total number of salt-minions
+  if [ "${LINE_COUNT}" = "1" ]; then
+    TOTAL_NR_OF_MINIONS="${line}"
+
+  # Total number of dead salt-minions
+  elif [ "${LINE_COUNT}" = "2" ]; then 
+    TOTAL_NR_OF_DEAD_MINIONS="${line}"
+  else
+    # If excluded salt-minions exist, parse current line with
+    #  the list of excluded salt-minions
+    if [[ "${EXCLUDED_MINIONS}" =~ .*^${line}$.* ]]; then
+      if [ -z "${EXCLUDED_OUTPUT}" ]; then
+        EXCLUDED_OUTPUT="${line}"
+      else
+        EXCLUDED_OUTPUT=$(printf "${EXCLUDED_OUTPUT}\n${line}")
+      fi
+    else
+      # The list of dead salt-minion id's
+      if [ -f "${CACHE_FOLDER}${line}.state" ]; then
+        TMPDATE="$(<${CACHE_FOLDER}${line}.state)"
+        if [ "${TOP_DEAD_TIME}" -lt "$(expr ${NOW} - ${TMPDATE})" ]; then
+          TOP_DEAD_TIME="$(expr ${NOW} - ${TMPDATE})"
+        fi
+      fi
+        
+      # Compile the result of the test
+      
+      # If this is the first line, we don't need to add a new line
+      if [ -z "${OUTPUT}" ]; then
+        
+        # If we have a timestamp in the state file we will use this to calculate
+        #   how long the salt-minion has been dead
+        if [ -n "${TMPDATE}" ]; then
+          OUTPUT="${line} - dead for $(expr ${NOW} - ${TMPDATE}) seconds"
+        else
+          OUTPUT="${line}"
+        fi
+      # If there are aditional rows, create a new line
+      else
+        if [ -n "${TMPDATE}" ]; then
+          OUTPUT=$(printf "${OUTPUT}\n${line} - dead for $(expr ${NOW} - ${TMPDATE}) seconds")
+        else
+         OUTPUT=$(printf "${OUTPUT}\n${line}")
+        fi
+      fi
+    fi
+  fi
+done < ${DEAD_MINIONS}
+
+# If the longest dead salt-minion is greater than 
+#  critical, exit with critical
+if [ ${TOP_DEAD_TIME} -gt ${CRITICAL_LEVEL} ]; then
+  EXIT_CODE=$CRITICAL_EXIT_CODE
+  EXIT_MSG=$CRITICAL_MSG
+
+# If the longest dead salt-minion is greater than
+#  warning, exit with warning 
+elif [ ${TOP_DEAD_TIME} -gt ${WARNING_LEVEL} ]; then
+  EXIT_CODE=$WARNING_EXIT_CODE
+  EXIT_MSG=$WARNING_MSG
+
+# everything is awesome if we are under both warning and critical 
+else
+  EXIT_CODE=$OK_EXIT_CODE
+  EXIT_MSG=$OK_MSG
+fi
+
+# Populate the list with excluded salt-minions if we found someone
+if [ -n "${EXCLUDED_OUTPUT}" ]; then
+  EXCLUDED_OUTPUT=$(printf "\nExcluded dead salt-minions:\n${EXCLUDED_OUTPUT}")
+fi
+
+# Only append new line to the output if we have a result or the check command
+#  will lock kind of ugly
+if [ -n "${OUTPUT}" ]; then
+  OUTPUT=$(printf "\n${OUTPUT}")
+fi
+
+# Echo message and exit
+if [ "${EXIT_CODE}" -eq "${OK_EXIT_CODE}" ]; then
+  printf "${EXIT_MSG}: No dead salt-minions found =)${OUTPUT}${EXCLUDED_OUTPUT}|'Nr of salt-minions'=${TOTAL_NR_OF_MINIONS};;; 'Nr of dead salt-minions'=${TOTAL_NR_OF_DEAD_MINIONS};;;\n"
+else
+  printf "${EXIT_MSG}: salt-minion(s) found that has been dead for more than "${TOP_DEAD_TIME}" seconds!${OUTPUT}${EXCLUDED_OUTPUT}|'Nr of salt-minions'=${TOTAL_NR_OF_MINIONS};;; 'Nr of dead salt-minions'=${TOTAL_NR_OF_DEAD_MINIONS};;;\n"
+fi
+exit $EXIT_CODE
