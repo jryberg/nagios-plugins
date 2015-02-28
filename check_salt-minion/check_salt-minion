@@ -72,7 +72,7 @@ cat - <<EOF
 Usage: ${APPNAME} [--help]
 Usage: ${APPNAME} [-w warn] [-c crit]
 
-Plugin for NRPE (Nagios Remote Plugin Executor) to check
+Plugin for NRPE (Nagios Remote Plugin Executor) to end-to-end test
 status of salt-minion daemons. Returns number of accepted salt-minions,
 number of dead salt-minions and a list of dead salt-minion id's
 
