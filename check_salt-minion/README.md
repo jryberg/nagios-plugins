@@ -40,8 +40,9 @@ minion3
 ```
 # Test ping_salt-minion
 It's a good idéa to test pign_salt-minion the first time to make sure everything works as expected.
-
+```
 sudo /etc/cron.hourly/ping_salt-minion
+```
 
 By default, the versbose flag in the script is set to true. Once the script has executed sucessfully first time you can disable output by changing the row:
 ```
