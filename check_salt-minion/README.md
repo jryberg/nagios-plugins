@@ -14,13 +14,20 @@ Tested on Redhat 6.6, CentOS 6.6 and Ubuntu 14.04. Please make sure all path's i
 pnp template to be used with pnp4nagios (http://pnp4nagios.org).
 
 # Installation
-Copy check_salt-minion to your plugin folder for nrpe on your salt-master server and ping_salt-minion to /etc/cron.hourly on your salt-master server. 
+### check_salt-minion
+Copy check_salt-minion to your nrpe plugin folder on your salt-master host
+Make sure check_salt-minion can be executed (chmod +x path_to_check_salt-minion)
 
-If you want another scheduler instead of every hour, please execute the script via cron
+### ping_salt-minion
+Copy ping_salt-minion to /etc/cron.hourly on your salt-master host. 
+Make sure ping_salt-minion can be executed (chmod +x path_to_ping_salt-minion)
 
-Make sure execute bit are set on both scripts (chmod +x <path to script>)
+By placing ping_salt-minion in /etc/cron.hourly the script will be executed once every hour. If you have many thousands of salt-minions you might want to move the script to cron.daily instead since it will take some time to test all salt-minions.
 
-Copy check_minions.php to your pnp template folder on the monitoring server and make necessary configuration depending of your setup. For more information see:
+If you want to use a custom scheduler instead, please execute the script via cron
+
+### check_minions.php (pnp4nagios template)
+Copy check_minions.php to your pnp template folder on the monitoring host and make necessary configuration depending of your setup. For more information see:
 - http://docs.pnp4nagios.org/pnp-0.6/tpl_custom
 - https://kb.op5.com/display/HOWTOs/Add+new+templates+to+op5+Monitor+performance+graphs
 
@@ -30,4 +37,19 @@ If you want to exclude salt-minions from the test please create "/var/cache/chec
 minion1
 minion2
 minion3
+```
+# Test ping_salt-minion
+It's a good idéa to test pign_salt-minion the first time to make sure everything works as expected.
+
+sudo /etc/cron.hourly/ping_salt-minion
+
+By default, the versbose flag in the script is set to true. Once the script has executed sucessfully first time you can disable output by changing the row:
+```
+# Set VERBOSE to 1 if you would like some output
+VERBOSE="1"
+```
+to
+```
+# Set VERBOSE to 1 if you would like some output
+VERBOSE="0"
 ```
