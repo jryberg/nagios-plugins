@@ -8,8 +8,8 @@ Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu to check
 when APT was able to update the software database last time
 
 #### check_reboot-required
-Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu to check
-if a reboot are required and also list packages that requires reboot
+Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu and Red Hat/CentOS
+to check if a reboot are required and also list packages that requires reboot
 
 #### check_salt-minion
 Plugin for NRPE (Nagios Remote Plugin Executor) to end-to-end test
