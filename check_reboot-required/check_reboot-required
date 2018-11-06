@@ -33,8 +33,9 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 #
 # check_reboot-required
-# Plugin for NRPE (Nagios Remote Plugin Executor) for Debian/Ubuntu to check
-# if a reboot are required and also list packages that requires reboot
+# Plugin for NRPE (Nagios Remote Plugin Executor) for
+# Debian/Ubuntu/RedHat/CentOS to check if a reboot are required and
+# also list packages that requires reboot
 # Web: https://github.com/jryberg/nagios-plugins/
 
 APPNAME=`basename $0`
@@ -103,6 +104,80 @@ ${APPNAME} -s w
 EOF
 }
 
+function distro_name() {
+	if [[ -e /etc/redhat-release ]]; then
+		REDHAT_RELEASE=`cat /etc/redhat-release`
+		if [[ `cat /etc/redhat-release | grep CentOS` != "" ]]; then
+			echo "CentOS"
+		elif [[ `cat /etc/redhat-release | grep "Red Hat"` != "" ]]; then
+			echo "Red Hat"
+		else
+			echo "$REDHAT_RELEASE"
+		fi
+	elif [[ -e /etc/lsb-release ]]; then
+		. /etc/lsb-release
+		echo $DISTRIB_ID
+	elif [[ -e /etc/debian_version ]]; then
+		DEBIAN_VER=`cat /etc/debian_version`
+		echo "Debian"
+	else
+		echo "OS not recognized"
+	fi
+}
+function CheckDebianRebootRequired() {
+	if [ ! -f ${REBOOT_REQUIRED_PATH} ]; then
+			# Reboot not required
+			EXIT_MSG=$OK_MSG
+			EXIT_MSG_BODY="No reboot required|Packages=0;${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
+			EXIT_MSG_NR_PACKAGES=0
+			EXIT_CODE=$OK_EXIT_CODE
+	else
+			# Reboot required
+			NR_OF_PACKAGES=0
+			if [ -f ${REBOOT_REQUIRED_PKGS_PATH} ]; then
+					NR_OF_PACKAGES=`wc -l ${REBOOT_REQUIRED_PKGS_PATH} | awk '{ print $1 }'`
+			fi
+
+			if [ ${NR_OF_PACKAGES} -gt 0 ]; then
+					if [ ${NR_OF_PACKAGES} -ge ${CRITICAL_LEVEL} ] && [ ${CRITICAL_LEVEL} -ne "-1" ];then
+							EXIT_MSG=$CRITICAL_MSG
+							EXIT_CODE=$CRITICAL_EXIT_CODE
+					elif [ ${NR_OF_PACKAGES} -ge ${WARNING_LEVEL} ] && [ ${WARNING_LEVEL} -ne "-1" ];then
+							EXIT_MSG=$WARNING_MSG
+							EXIT_CODE=$WARNING_EXIT_CODE
+					else
+							EXIT_MSG=$OK_MSG
+							EXIT_CODE=$OK_EXIT_CODE
+					fi
+					EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`<br/>Packages:<br/>`cat ${REBOOT_REQUIRED_PKGS_PATH} | sed ':a;N;$!ba;s/\n/<br\/>/g'`|Packages=${NR_OF_PACKAGES};${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
+			else
+					if [[ ${STATUS} = "w" ]]; then
+							EXIT_MSG=$WARNING_MSG
+							EXIT_CODE=$WARNING_EXIT_CODE
+					else
+							EXIT_MSG=$CRITICAL_MSG
+							EXIT_CODE=$CRITICAL_EXIT_CODE
+					fi
+					EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`|Packages=U;${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
+			fi
+	fi
+}
+function CheckRedHatRebootRequired() {
+	LAST_KERNEL=`/bin/rpm -q --last kernel | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-(\S+).*/$1/'`
+	RUNNING_KERNEL=`uname -r`
+
+	if [[ $LAST_KERNEL != $RUNNING_KERNEL ]];	then
+		EXIT_MSG=$CRITICAL_MSG
+		EXIT_MSG_BODY="Reboot required, the running kernel ($RUNNING_KERNEL) is different from the last kernel installed ($LAST_KERNEL)."
+		EXIT_MSG_NR_PACKAGES=1		
+		EXIT_CODE=$CRITICAL_EXIT_CODE
+	else
+		EXIT_MSG=$OK_MSG
+		EXIT_MSG_BODY="No reboot required|Packages=0;${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
+		EXIT_MSG_NR_PACKAGES=0
+		EXIT_CODE=$OK_EXIT_CODE		
+	fi
+}
 # Process arguments
 while [ $# -gt 0 ]
     do
@@ -114,12 +189,15 @@ while [ $# -gt 0 ]
                 ;;
                 -s)
                     shift
-                    if [[ ${1} =~ ^[w|c]$ ]]; then
+                    case $1 in
+											w|c)
                         STATUS="${1}"
-                    else
+                        ;;
+											*)
                         echo "${APPNAME}: Service status must be w (Warning) or c (Critical)"
                         exit $UNKNOWN_EXIT_CODE
-                    fi
+                        ;;
+                    esac
                     shift
                 ;;
                 -w)
@@ -159,42 +237,22 @@ if [ -z ${STATUS} ]; then
     exit $UNKNOWN_EXIT_CODE
 fi
 
-if [ ! -f ${REBOOT_REQUIRED_PATH} ]; then
-    # Reboot not required
-    EXIT_MSG=$OK_MSG
-    EXIT_MSG_BODY="No reboot required|Packages=0;${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
-    EXIT_MSG_NR_PACKAGES=0
-    EXIT_CODE=$OK_EXIT_CODE
-else
-    # Reboot required
-    NR_OF_PACKAGES=0
-    if [ -f ${REBOOT_REQUIRED_PKGS_PATH} ]; then
-        NR_OF_PACKAGES=`wc -l ${REBOOT_REQUIRED_PKGS_PATH} | awk '{ print $1 }'`
-    fi
-
-    if [ ${NR_OF_PACKAGES} -gt 0 ]; then
-        if [ ${NR_OF_PACKAGES} -ge ${CRITICAL_LEVEL} ] && [ ${CRITICAL_LEVEL} -ne "-1" ];then
-            EXIT_MSG=$CRITICAL_MSG
-            EXIT_CODE=$CRITICAL_EXIT_CODE
-        elif [ ${NR_OF_PACKAGES} -ge ${WARNING_LEVEL} ] && [ ${WARNING_LEVEL} -ne "-1" ];then
-            EXIT_MSG=$WARNING_MSG
-            EXIT_CODE=$WARNING_EXIT_CODE
-        else
-            EXIT_MSG=$OK_MSG
-            EXIT_CODE=$OK_EXIT_CODE
-        fi
-        EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`<br/>Packages:<br/>`cat ${REBOOT_REQUIRED_PKGS_PATH} | sed ':a;N;$!ba;s/\n/<br\/>/g'`|Packages=${NR_OF_PACKAGES};${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
-    else
-        if [[ ${STATUS} = "w" ]]; then
-            EXIT_MSG=$WARNING_MSG
-            EXIT_CODE=$WARNING_EXIT_CODE
-        else
-            EXIT_MSG=$CRITICAL_MSG
-            EXIT_CODE=$CRITICAL_EXIT_CODE
-        fi
-        EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`|Packages=U;${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
-    fi
-fi
+case `distro_name` in
+	"OS not recognized")
+		echo "OS wasn't recognized, please report to maintainer of this script."
+		exit $UNKNOWN_EXIT_CODE
+	;;
+	"Debian"|"Ubuntu")
+		CheckDebianRebootRequired
+	;;
+	"Red Hat"|"CentOS")
+		CheckRedHatRebootRequired
+	;;
+	*)
+		echo "OS wasn't recognized, please report to maintainer of this script."
+		exit $UNKNOWN_EXIT_CODE
+	;;
+esac
 
 # Echo message and exit
 echo "${EXIT_MSG}: ${EXIT_MSG_BODY}"
