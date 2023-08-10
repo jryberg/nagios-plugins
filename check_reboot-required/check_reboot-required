@@ -149,7 +149,7 @@ function CheckDebianRebootRequired() {
 							EXIT_MSG=$OK_MSG
 							EXIT_CODE=$OK_EXIT_CODE
 					fi
-					EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`<br/>Packages:<br/>`cat ${REBOOT_REQUIRED_PKGS_PATH} | sed ':a;N;$!ba;s/\n/<br\/>/g'`|Packages=${NR_OF_PACKAGES};${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
+					EXIT_MSG_BODY="`cat ${REBOOT_REQUIRED_PATH}`Packages: `cat ${REBOOT_REQUIRED_PKGS_PATH} | sed ':a;N;$!ba;s/\n/, /g'`|Packages=${NR_OF_PACKAGES};${WARNING_LEVEL//-1/};${CRITICAL_LEVEL//-1/};0"
 			else
 					if [[ ${STATUS} = "w" ]]; then
 							EXIT_MSG=$WARNING_MSG
