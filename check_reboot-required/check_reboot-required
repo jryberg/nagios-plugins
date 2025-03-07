@@ -120,6 +120,8 @@ function distro_name() {
 	elif [[ -e /etc/debian_version ]]; then
 		DEBIAN_VER=`cat /etc/debian_version`
 		echo "Debian"
+        elif [[ `cat /etc/os-release | grep "Amazon Linux 2"` != "" ]]; then
+                        echo "Red Hat"
 	else
 		echo "OS not recognized"
 	fi
