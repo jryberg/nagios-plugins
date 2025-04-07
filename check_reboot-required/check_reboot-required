@@ -107,7 +107,9 @@ EOF
 function distro_name() {
 	if [[ -e /etc/redhat-release ]]; then
 		REDHAT_RELEASE=`cat /etc/redhat-release`
-		if [[ `cat /etc/redhat-release | grep CentOS` != "" ]]; then
+		if [[ -e /etc/oracle-release && `uname -r` == *"uek"* ]]; then
+			echo "Oracle UEK"
+		elif [[ `cat /etc/redhat-release | grep CentOS` != "" ]]; then
 			echo "CentOS"
 		elif [[ `cat /etc/redhat-release | grep "Red Hat"` != "" ]]; then
 			echo "Red Hat"
@@ -165,7 +167,11 @@ function CheckDebianRebootRequired() {
 	fi
 }
 function CheckRedHatRebootRequired() {
-	LAST_KERNEL=`/bin/rpm -q --last kernel | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-(\S+).*/$1/'`
+	if  [[ `distro_name` == "Oracle UEK" ]]; then
+		LAST_KERNEL=`/bin/rpm -q --last kernel-uek | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-uek-(\S+).*/$1/'`
+	else
+		LAST_KERNEL=`/bin/rpm -q --last kernel | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-(\S+).*/$1/'`
+	fi
 	RUNNING_KERNEL=`uname -r`
 
 	if [[ $LAST_KERNEL != $RUNNING_KERNEL ]];	then
@@ -247,7 +253,7 @@ case `distro_name` in
 	"Debian"|"Ubuntu")
 		CheckDebianRebootRequired
 	;;
-	"Red Hat"|"CentOS")
+	"Red Hat"|"CentOS"|"Oracle UEK")
 		CheckRedHatRebootRequired
 	;;
 	*)
