@@ -111,6 +111,8 @@ function distro_name() {
 			echo "Oracle UEK"
 		elif [[ `cat /etc/redhat-release | grep CentOS` != "" ]]; then
 			echo "CentOS"
+		elif [[ `cat /etc/redhat-release | grep "AlmaLinux"` != "" ]]; then
+			echo "AlmaLinux"
 		elif [[ `cat /etc/redhat-release | grep "Red Hat"` != "" ]]; then
 			echo "Red Hat"
 		else
@@ -253,7 +255,7 @@ case `distro_name` in
 	"Debian"|"Ubuntu")
 		CheckDebianRebootRequired
 	;;
-	"Red Hat"|"CentOS"|"Oracle UEK")
+	"Red Hat"|"CentOS"|"Oracle UEK"|"AlmaLinux")
 		CheckRedHatRebootRequired
 	;;
 	*)
