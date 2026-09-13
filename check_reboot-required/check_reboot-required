@@ -181,9 +181,13 @@ function CheckRedHatRebootRequired() {
 		KERNEL_PKG="kernel"
 	fi
 
-	# The name is matched generically rather than spelled out, so the same line
-	# serves all three packages.
-	LAST_KERNEL=`/bin/rpm -q --last ${KERNEL_PKG} | /usr/bin/head -1 | /usr/bin/perl -pe 's/^\S+?-(\d\S*).*/$1/'`
+	# Strip the package name and the trailing install date with bash's own
+	# parameter expansion. The package name is already known here, so finding
+	# where the version starts needs no regex, and this was the script's only
+	# call to perl -- which a minimal EL8 install does not ship.
+	LAST_KERNEL=`/bin/rpm -q --last ${KERNEL_PKG} | /usr/bin/head -1`
+	LAST_KERNEL="${LAST_KERNEL#${KERNEL_PKG}-}"
+	LAST_KERNEL="${LAST_KERNEL%% *}"
 	RUNNING_KERNEL=`uname -r`
 
 	# rpm -q writes "package <name> is not installed" to stdout, and the regex
