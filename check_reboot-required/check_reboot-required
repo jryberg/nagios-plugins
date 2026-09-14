@@ -169,12 +169,38 @@ function CheckDebianRebootRequired() {
 	fi
 }
 function CheckRedHatRebootRequired() {
+	# Pick the package that actually carries the running kernel. Oracle ships it
+	# as kernel-uek. EL8 and later split the stock kernel in two: kernel-core is
+	# always installed, while the kernel metapackage is optional and absent from
+	# minimal installs. EL7 and older only have kernel.
 	if  [[ `distro_name` == "Oracle UEK" ]]; then
-		LAST_KERNEL=`/bin/rpm -q --last kernel-uek | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-uek-(\S+).*/$1/'`
+		KERNEL_PKG="kernel-uek"
+	elif /bin/rpm -q kernel-core > /dev/null 2>&1; then
+		KERNEL_PKG="kernel-core"
 	else
-		LAST_KERNEL=`/bin/rpm -q --last kernel | /usr/bin/head -1 | /usr/bin/perl -pe 's/^kernel-(\S+).*/$1/'`
+		KERNEL_PKG="kernel"
 	fi
+
+	# Strip the package name and the trailing install date with bash's own
+	# parameter expansion. The package name is already known here, so finding
+	# where the version starts needs no regex, and this was the script's only
+	# call to perl -- which a minimal EL8 install does not ship.
+	LAST_KERNEL=`/bin/rpm -q --last ${KERNEL_PKG} | /usr/bin/head -1`
+	LAST_KERNEL="${LAST_KERNEL#${KERNEL_PKG}-}"
+	LAST_KERNEL="${LAST_KERNEL%% *}"
 	RUNNING_KERNEL=`uname -r`
+
+	# rpm -q writes "package <name> is not installed" to stdout, and the regex
+	# above leaves that line untouched. Without this guard the error text becomes
+	# the last installed kernel, never matches uname -r, and the check reports a
+	# reboot is required on every single run.
+	if [[ ! $LAST_KERNEL =~ ^[0-9] ]]; then
+		EXIT_MSG=$UNKNOWN_MSG
+		EXIT_MSG_BODY="Unable to determine the last installed kernel from package ${KERNEL_PKG}."
+		EXIT_MSG_NR_PACKAGES=0
+		EXIT_CODE=$UNKNOWN_EXIT_CODE
+		return
+	fi
 
 	if [[ $LAST_KERNEL != $RUNNING_KERNEL ]];	then
 		EXIT_MSG=$CRITICAL_MSG
